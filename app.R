@@ -40,10 +40,10 @@ ui <- fluidPage(includeCSS("www/design.css"),includeScript("www/design.js"),
                                                  fluidRow(
                                                    column(3,uiOutput("getID")),
                                                    column(3,uiOutput("get5D"))),
-                                                 fluidRow(column(4,uiOutput("profit")), actionButton("cwnt", "1D ↓ 5D ↓"),
+                                                 fluidRow(column(4,uiOutput("profit")), column(8,actionButton("cwnt", "1D ↓ 5D ↓"),
                                                                                         actionButton("up1dt", "1D ↑ 5D ↓"),
                                                                                         actionButton("up5dt", "1D ↓ 5D ↑"),
-                                                                                        actionButton("upt", "1D ↑ 5D ↑"),
+                                                                                        actionButton("upt", "1D ↑ 5D ↑")),
                                                                #column(2,radioButtons("one_day","1D",choices = c("0","greater than 0","lesser than 0"),selected = NULL,inline = FALSE,width = NULL)),
                                                                #column(2,checkboxGroupInput("id", label = "id", choices = c("0","greater than 0","lesser than 0")))
                                                  ), br(), reactableOutput("details") %>% withSpinner(color="#0dc5c1")),
@@ -84,7 +84,7 @@ server <- function(input, output, session) {
     div(style="margin-left:5%", checkboxGroupInput("companies_sel", "Companies",choices = clist$detailed, selected = clist$detailed[1:10]))
   })
 
-  main_data <- sqlQuery(conn,paste0("select top 50 symbol,name,price,yearHighdayHigh,dayHigh,eps,marketCap,pe,[open],[volume],priceAvg50,priceAvg200,CONVERT(TEXT,description) as description,industry,sector,isin,isActivelyTrading,fullTimeEmployees,prevClose,low,[1D],[5D],date,floatShares,outstandingShares,pc,time from Price_Table"))
+  main_data <- sqlQuery(conn,paste0("select symbol,name,price,yearHighdayHigh,dayHigh,eps,marketCap,pe,[open],[volume],priceAvg50,priceAvg200,CONVERT(TEXT,description) as description,industry,sector,isin,isActivelyTrading,fullTimeEmployees,prevClose,low,[1D],[5D],date,floatShares,outstandingShares,pc,time from Price_Table"))
 
   #hidden_Columns <- c("symbol","eps", "marketCap", "pe", "description", "industry", "sector", "isin", "prevClose", "low", "open", "pc", "1D", "5D", "isActivelyTrading", "priceAvg50", "priceAvg200", "time", "date", "floatShares", "outstandingShares")
 
@@ -108,7 +108,7 @@ server <- function(input, output, session) {
   main_data_u1dt <- main_data[(main_data$`1D` > 0 & main_data$`5D` < 0),]
 
   output$details <- renderReactable(get_react_table(main_data))
-
+  # browser()
   output$def <- renderTable({
     def_data <- sqlQuery(conn,paste0("select * from Defintions"))
     def_data
@@ -175,10 +175,11 @@ server <- function(input, output, session) {
   })
   # }
 
-browser()
+
   Statement <- read_excel("Statement/ledger-WMJ575.xlsx", range = "B15:H10000")
   final_Statement <- Statement[rowSums(is.na(Statement)) != ncol(Statement), ]
   total_Investment <- sum(final_Statement[final_Statement$`Voucher Type` == "Bank Receipts",]$Credit,na.rm = TRUE) - sum(final_Statement[final_Statement$`Voucher Type` == "Bank Payments",]$Debit,na.rm = TRUE)
+  # browser()
   #Net_Balance <- data.frame(check.names = FALSE, Particulars = paste0('Net Profit(%)', " as of ", Sys.Date()), `Posting Date` =  NA, `Cost Center` = NA,  `Voucher Type` = NA, Debit = NA, Credit = NA, `Net Balance` = (final_Statement$`Net Balance`[final_Statement$Particulars == 'Closing Balance'] - 10000)*100/10000)
   #net <- rbind(final_Statement, Net_Balance)
   #netvalue <- data.frame(row.names = tail(net, n = 2)[['Particulars']], Value = round(tail(net, n = 2)[['Net Balance']],1))
@@ -197,14 +198,21 @@ browser()
 
   if(file.exists("Statement/holdings.csv")){
     holdings <- read_csv("Statement/holdings.csv")
+    cv <- sum(holdings$`Cur. val`)
+    holdings$invested <- holdings$Qty. * holdings$`Avg. cost`
+    invested <- sum(holdings$invested)
   } else {
     holdings <- data.frame("Instrument" = "NA" , `Qty.` = 0,  `Avg. cost` = 0,  LTP = 0,  `Cur. val` = 0, `P&L` = 0, `Net chg.` = 0,  `Day chg.` = 0, check.names = FALSE)
+    cv <- 0
+    invested <- 0
   }
 
+  UnRealised_amount <- round(((cv - total_Investment) * 100/total_Investment),1)
+  Realised_amount <- round(((invested - total_Investment) * 100/total_Investment),1)
   holdings <- as.data.frame(holdings)
   colnames(holdings)[which(names(holdings) == "Instrument")] <- "Symbol"
   Investment_History_v1 <- left_join(Investment_History_v1, holdings[c('Symbol', 'Cur. val')], by='Symbol')
-
+  # browser()
 
   #df <- data.frame(Symbol = c('A', 'B'), Status = c('Sold', 'Not Sold'), buy = c(1000,200), sell = c(200,NA), `Cur. val` = c(NA, 700), check.names = FALSE)
   net <- Investment_History_v1 %>% group_by(Status) %>% summarise(buy = sum(buy), sell = sum(sell, na.rm = TRUE), cur_val = sum(`Cur. val`,na.rm = TRUE))
@@ -221,27 +229,29 @@ browser()
   net_loss <- paste0("Net Profit : ", round((total_sold - total_buy),1), " : ", round(((total_sold - total_buy) * 100 / total_buy),2), "%")
   Realised <- net$net_calculation[net$Status == "Sold"]
   # if(net$Status == "Not Sold"){
-  if("Not Sold" %in% net$Status){
-    UnRealised <- net$net_calculation[net$Status == "Not Sold"]
-    Current_Status <- round(((net$sell-net$buy)[net$Status == "Sold"] + (net$cur_val-net$buy)[net$Status == "Not Sold"]) * 100 / net$buy[net$Status == "Not Sold"],2)
-  } else {
-    UnRealised <- 0
-    Current_Status <- Realised
-  }
+  # if("Not Sold" %in% net$Status){
+  #   UnRealised <- net$net_calculation[net$Status == "Not Sold"]
+  #   Current_Status <- round(((net$sell-net$buy)[net$Status == "Sold"] + (net$cur_val-net$buy)[net$Status == "Not Sold"]) * 100 / net$buy[net$Status == "Not Sold"],2)
+  # } else {
+  #   UnRealised <- 0
+  #   Current_Status <- Realised
+  # }
 
   Closing_Balance <- round(as.data.frame(final_Statement)['Net Balance'][as.data.frame(final_Statement)['Particulars'] == "Closing Balance"],2)
 
 
-  if(Current_Status >= 0){
-    col <- '#9add9a'
-    til <- 'Net Profit'
-  } else {
-    col <- '#D22B2B'
-    til <- 'Net Loss'
-  }
 
 
-  if(Realised >= 0){
+  # if(Current_Status >= 0){
+  #   col <- '#9add9a'
+  #   til <- 'Net Profit'
+  # } else {
+  #   col <- '#D22B2B'
+  #   til <- 'Net Loss'
+  # }
+
+
+  if(Realised_amount >= 0){
     col_r <- '#9add9a'
     til_r <- 'Realised Profit'
   } else {
@@ -249,7 +259,7 @@ browser()
     til_r <- 'Realised Loss'
   }
 
-  if(UnRealised >= 0){
+  if(UnRealised_amount >= 0){
     col_ur <- '#9add9a'
     til_ur <- 'UnRealised Profit'
   } else {
@@ -274,10 +284,11 @@ browser()
     } else {
       div(style="margin-left:2%", actionButton(inputId = "pro",
                                                HTML(paste0(
-                                                 div(style="text-align:-webkit-left", til, ' : ',span(style=glue("color:{col};font-weight:800;"),Current_Status, " % "), tags$sub("(", til_r , " + ", til_ur, ")")),
-                                                 div(style="text-align:-webkit-left", til_r, ' : ',span(style=glue("color:{col_r};font-weight:800;"),Realised, " % "), tags$sub(" in", days_cal, " days")),
-                                                 div(style="text-align:-webkit-left", til_ur, ' : ',span(style=glue("color:{col_ur};font-weight:800;"),UnRealised, " % "), tags$sub(" in", days_cal, " days")),
-                                                 div(style="text-align:-webkit-left", til_cb, ' : ',span(style=glue("color:{col_cb};font-weight:800;"),Closing_Balance, " Rs "), tags$sub(" in", days_cal, " days"))
+                                                 div(style="text-align:-webkit-left", "Total Investment", ' : ',span(style=glue("color:black;font-weight:600;"),total_Investment)),
+                                                 div(style="text-align:-webkit-left", til_ur, ' : ',span(style=glue("color:{col_ur};font-weight:600;"),paste0((cv - total_Investment)," (", UnRealised_amount, " % ", ") "))),
+                                                 div(style="text-align:-webkit-left", til_r, ' : ',span(style=glue("color:{col_r};font-weight:600;"),paste0((invested - total_Investment), " (", Realised_amount, " % ", ") "))),
+                                                 #div(style="text-align:-webkit-left", til_ur, ' : ',span(style=glue("color:{col_ur};font-weight:800;"),UnRealised, " % "), tags$sub(" in", days_cal, " days")),
+                                                 div(style="text-align:-webkit-left", til_cb, ' : ',span(style=glue("color:{col_cb};font-weight:600;"),Closing_Balance, " Rs "), tags$sub(" in", days_cal, " days"))
                                                ))))
     }
 
