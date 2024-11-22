@@ -71,6 +71,9 @@ ui <- fluidPage(includeCSS("www/design.css"),includeScript("www/design.js"),
                                                          tableOutput("statement"),
                                                          div(style="margin-left:0.5%", htmlOutput("sta_link"))),
                                                tabPanel("Profit/Loss", br(), plotlyOutput("plot_profit_loss",width = "400px")),
+                                               tabPanel("Key Metrics", br(),
+                                                        selectizeInput('comkm', "Company", choices = NULL, multiple = FALSE), plotlyOutput("keyMetrics",width = "400px"), br(),
+                                                        uiOutput("act")),
                 ))
 )
 
@@ -84,8 +87,8 @@ server <- function(input, output, session) {
     div(style="margin-left:5%", checkboxGroupInput("companies_sel", "Companies",choices = clist$detailed, selected = clist$detailed[1:10]))
   })
 
-  main_data <- sqlQuery(conn,paste0("select symbol,name,price,yearHighdayHigh,dayHigh,eps,marketCap,pe,[open],[volume],priceAvg50,priceAvg200,CONVERT(TEXT,description) as description,industry,sector,isin,isActivelyTrading,fullTimeEmployees,prevClose,low,[1D],[5D],date,floatShares,outstandingShares,pc,time from Price_Table"))
-
+  main_data <- sqlQuery(conn,paste0("select top 1 symbol,name,price,yearHighdayHigh,dayHigh,eps,marketCap,pe,[open],[volume],priceAvg50,priceAvg200,CONVERT(TEXT,description) as description,industry,sector,isin,isActivelyTrading,fullTimeEmployees,prevClose,low,[1D],[5D],date,floatShares,outstandingShares,pc,time from Price_Table where pe > 0 and marketCap > 10000000000"))
+  #main_data <- sqlQuery(conn,paste0("select symbol,[name]+prHTML+prHTML_avg as [name],price,yearHighdayHigh,dayHigh,eps,marketCap,pe,[open],[volume],priceAvg50,priceAvg200,CONVERT(TEXT,description) as description,industry,sector,isin,isActivelyTrading,fullTimeEmployees,prevClose,low,[1D],[5D],date,floatShares,outstandingShares,pc,time from Price_Table_new where marketCap > 10000000000"))
   #hidden_Columns <- c("symbol","eps", "marketCap", "pe", "description", "industry", "sector", "isin", "prevClose", "low", "open", "pc", "1D", "5D", "isActivelyTrading", "priceAvg50", "priceAvg200", "time", "date", "floatShares", "outstandingShares")
 
   main_data[['name']] <- sapply(paste0(
@@ -196,6 +199,7 @@ server <- function(input, output, session) {
   Investment_History_v1 <- cast(Investment_History_v1 , Symbol~TradeType, value = 'investment')
   Investment_History_v1$Status <- ifelse(is.na(Investment_History_v1$sell), "Not Sold","Sold")
 
+  # browser()
   if(file.exists("Statement/holdings.csv")){
     holdings <- read_csv("Statement/holdings.csv")
     cv <- sum(holdings$`Cur. val`)
@@ -209,6 +213,7 @@ server <- function(input, output, session) {
 
   UnRealised_amount <- round(((cv - total_Investment) * 100/total_Investment),1)
   Realised_amount <- round(((invested - total_Investment) * 100/total_Investment),1)
+  # browser()
   holdings <- as.data.frame(holdings)
   colnames(holdings)[which(names(holdings) == "Instrument")] <- "Symbol"
   Investment_History_v1 <- left_join(Investment_History_v1, holdings[c('Symbol', 'Cur. val')], by='Symbol')
@@ -278,7 +283,8 @@ server <- function(input, output, session) {
 
   # browser()
   output$profit <- renderUI({
-    if(holdings$Qty. == 0 & holdings$`Cur. val` == 0 & holdings$LTP > 0){
+    # if(holdings$Qty. == 0 & holdings$`Cur. val` == 0 & holdings$LTP > 0){
+    if(colSums(holdings==0)[['Qty.']] == 0 & colSums(holdings==0)[['Cur. val']] == 0 & colSums(holdings==0)[['LTP']] > 0){
       div(style="margin-left:2%", actionButton(inputId = "pro",
                                                HTML(paste0("One of the security is been sold today and hence the returns will be reflected tommorrow"))))
     } else {
@@ -286,7 +292,7 @@ server <- function(input, output, session) {
                                                HTML(paste0(
                                                  div(style="text-align:-webkit-left", "Total Investment", ' : ',span(style=glue("color:black;font-weight:600;"),total_Investment)),
                                                  div(style="text-align:-webkit-left", til_ur, ' : ',span(style=glue("color:{col_ur};font-weight:600;"),paste0((cv - total_Investment)," (", UnRealised_amount, " % ", ") "))),
-                                                 div(style="text-align:-webkit-left", til_r, ' : ',span(style=glue("color:{col_r};font-weight:600;"),paste0((invested - total_Investment), " (", Realised_amount, " % ", ") "))),
+                                                 div(style="text-align:-webkit-left", til_r, ' : ',span(style=glue("color:{col_r};font-weight:600;"),paste0(round((invested - total_Investment),1), " (", Realised_amount, " % ", ") "))),
                                                  #div(style="text-align:-webkit-left", til_ur, ' : ',span(style=glue("color:{col_ur};font-weight:800;"),UnRealised, " % "), tags$sub(" in", days_cal, " days")),
                                                  div(style="text-align:-webkit-left", til_cb, ' : ',span(style=glue("color:{col_cb};font-weight:600;"),Closing_Balance, " Rs "), tags$sub(" in", days_cal, " days"))
                                                ))))
@@ -328,16 +334,14 @@ server <- function(input, output, session) {
     updateTabsetPanel(session, inputId = "initial_Tabs", selected = "Investment Details")
   })
 
-  # browser()
+
   output$plot_profit_loss <- renderPlotly({
     plot_ly(Investment_History_v1[Investment_History_v1$Status == "Sold",], x = ~Symbol, y = ~profit,
             type = 'bar', marker = list(color = 'rgb(158,202,225)',line = list(color = 'rgb(8,48,107)',
-                                                                               width = 1))) %>% layout(
-                                                                                 paper_bgcolor='antiquewhite',
-                                                                                 plot_bgcolor='antiquewhite')
-    # %>%
-    #   add_annotations(x= 0.5,
-    #                   y= max_profit + 5,text = glue("<b>{net_loss}</b>"),showarrow = F)
+                                                                               width = 1)))
+    # %>% layout(
+    #                                                                              paper_bgcolor='antiquewhite',
+    #                                                                              plot_bgcolor='antiquewhite') %>% add_annotations(x= 0.5,y= max_profit + 5,text = glue("<b>{net_loss}</b>"),showarrow = F)
 
   })
 
@@ -377,6 +381,41 @@ server <- function(input, output, session) {
     removeModal()
     output$lk <- renderReactable(NULL)
   })
+
+
+  updateSelectizeInput(session, "comkm", choices = com$company_Name, options = NULL, server = TRUE, selected = com$company_Name[2])
+  key_metrics_actionButtons <- data.frame(id = c(1:length(colnames(select_if(key_metrics, is.numeric)))), km = colnames(select_if(key_metrics, is.numeric)))
+  # browser()
+
+      output$act <- renderUI({
+        lapply (1:nrow(key_metrics_actionButtons), function(i) {
+        actionButton(inputId = paste0(key_metrics_actionButtons$km[i],key_metrics_actionButtons$id[i]), label = key_metrics_actionButtons$km[i])
+      })
+
+
+  })
+
+      # browser()
+      lapply (1:nrow(key_metrics_actionButtons), function(i) {
+        observeEvent(input[[paste0(key_metrics_actionButtons$km[i],key_metrics_actionButtons$id[i])]],{
+          #print(key_metrics_actionButtons$km[i])
+          # print(key_metrics[key_metrics_actionButtons$km[i]])
+
+          output$keyMetrics <- renderPlotly({
+            #ggplotly(ggplot(key_metrics[c("date", key_metrics_actionButtons$km[i])], aes(x=date, y=get(key_metrics_actionButtons$km[i]))) + geom_bar(stat = "identity" , width=200, fill="steelblue",  position = position_dodge()))
+            # ggplotly(ggplot(key_metrics[c("date", key_metrics_actionButtons$km[i])], aes(x=date, y=get(key_metrics_actionButtons$km[i]))) + geom_bar(stat = "identity" , width=200, fill="steelblue",  position = position_dodge2(width = NULL,preserve = "total", padding = 0.1,reverse = FALSE)))
+            plot_ly(key_metrics[c("date", key_metrics_actionButtons$km[i])], x = ~date, y = ~get(key_metrics_actionButtons$km[i]),
+                    type = 'bar', marker = list(color = 'rgb(158,202,225)',line = list(color = 'rgb(8,48,107)',
+                                                                                       width = 1)))
+            })
+
+        })
+
+      })
+
+
+
+
 
 
 

@@ -39,7 +39,8 @@ nullToNA <- function(x) {
 }
 
 get_Links_int <- function(Description, from, to){
-  com <- sqlQuery(conn,paste0("Select symbol, company_Name from companiesList  where Location = 'India' ORDER BY slNo desc OFFSET ",from, " ROWS FETCH NEXT ", to, " ROWS ONLY"))
+  com <- sqlQuery(conn,paste0("Select symbol, company_Name from companiesList_New ORDER BY slNo desc OFFSET ",from, " ROWS FETCH NEXT ", to, " ROWS ONLY"))
+  #com <- sqlQuery(conn,paste0("Select symbol, company_Name from companiesList  where Location = 'India' ORDER BY slNo desc OFFSET ",from, " ROWS FETCH NEXT ", to, " ROWS ONLY"))
   #com_symbol <- capture.output(cat(com$symbol, sep = ","))
   com_symbol <- paste0(com$symbol,collapse = ",")
   Link <- sqlQuery(conn,paste0("select Link+API as Link from APIlist where [Description]  in (","'", Description, "'", ")"))
@@ -49,10 +50,10 @@ get_Links_int <- function(Description, from, to){
 
 main_Data_Get <- function(Description, from, to){
   datalist = list()
-  for (j in c(1:5)){
+  for (j in c(1:13)){
     i <- from
     asd <- c(get_Links_int(Description, i, to))
-    while (i < 2208) {
+    while (i < 6185) {
       asd <- c(asd, get_Links_int(Description, i, to))
       i <- i + to
     }
